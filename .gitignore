@@ -1,0 +1,10 @@
+# Data Cache
+backtest_data/
+*.csv
+*.parquet
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.env

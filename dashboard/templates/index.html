@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NIFTY 15-Min ORB Credit Spread Backtester (2015–2026)</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface2: #21262d;
+      --border: #30363d;
+      --accent: #6366f1;
+      --green: #22c55e;
+      --red: #ef4444;
+      --yellow: #f59e0b;
+      --blue: #3b82f6;
+      --text: #f0f6fc;
+      --muted: #8b949e;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --mono: "SF Mono", "Fira Code", Consolas, Menlo, monospace;
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: var(--font); padding: 24px; min-height: 100vh; }
+    .container { max-width: 1400px; margin: 0 auto; }
+    .header { display: flex; justify-content: space-between; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; margin-bottom: 20px; flex-wrap: wrap; gap: 14px; }
+    .title { font-size: 20px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 10px; }
+    .title span { color: var(--accent); }
+    .subtitle { font-size: 13px; color: var(--muted); margin-top: 4px; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; border-radius: 8px; font-size: 13.5px; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: #4f52e0; transform: translateY(-1px); }
+    .btn-muted { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+    .btn-muted:hover { color: var(--text); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+    
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; position: relative; }
+    .card-title { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    
+    .form-group { margin-bottom: 12px; }
+    .form-label { display: block; font-size: 11.5px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .form-input, .form-select { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: var(--mono); font-size: 12.5px; padding: 8px 12px; outline: none; }
+    .form-input:focus, .form-select:focus { border-color: var(--accent); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+    .checkbox-row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; }
+    .checkbox-label { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 5px; cursor: pointer; }
+
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+    .stat-label { font-size: 11.5px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .stat-val { font-size: 22px; font-weight: 800; font-family: var(--mono); margin: 6px 0 4px 0; }
+    .stat-sub { font-size: 11.5px; color: var(--muted); }
+    .text-green { color: var(--green); }
+    .text-red { color: var(--red); }
+    .text-blue { color: var(--blue); }
+    .text-yellow { color: var(--yellow); }
+
+    .chart-wrap { position: relative; height: 260px; }
+    .table-wrap { overflow-x: auto; max-height: 380px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { text-align: left; padding: 9px 12px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); background: var(--surface2); position: sticky; top: 0; }
+    td { padding: 9px 12px; border-bottom: 1px solid rgba(48, 54, 61, 0.5); }
+    tr:hover td { background: var(--surface2); }
+    .pnl-pill { display: inline-block; padding: 2px 8px; border-radius: 6px; font-weight: 700; font-size: 11.5px; }
+    .pnl-pill.profit { background: rgba(34, 197, 94, 0.15); color: var(--green); }
+    .pnl-pill.loss { background: rgba(239, 68, 68, 0.15); color: var(--red); }
+    .exit-tag { font-size: 10.5px; font-weight: 600; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; }
+    .exit-tag.target { background: rgba(34, 197, 94, 0.15); color: var(--green); }
+    .exit-tag.sl { background: rgba(239, 68, 68, 0.15); color: var(--red); }
+    .exit-tag.eod { background: rgba(139, 148, 158, 0.15); color: var(--muted); }
+    .dir-up { color: var(--green); font-weight: 700; }
+    .dir-down { color: var(--red); font-weight: 700; }
+
+    .heatmap-table { width: 100%; border-collapse: collapse; font-size: 11px; font-family: var(--mono); text-align: center; }
+    .heatmap-table th { text-align: center; padding: 6px 4px; }
+    .heatmap-table td { padding: 6px 3px; border: 1px solid rgba(48, 54, 61, 0.4); }
+    .heatmap-cell.green { background: rgba(34, 197, 94, 0.18); color: #4ade80; font-weight: 600; }
+    .heatmap-cell.red { background: rgba(239, 68, 68, 0.18); color: #f87171; font-weight: 600; }
+    .heatmap-cell.zero { color: var(--muted); }
+
+    #toast { position: fixed; bottom: 24px; right: 24px; z-index: 999; padding: 12px 18px; border-radius: 8px; font-size: 13px; display: none; background: #1f242c; border: 1px solid var(--border); color: #fff; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    @media(max-width: 1100px) { .grid-4 { grid-template-columns: repeat(2, 1fr); } .grid-2 { grid-template-columns: 1fr; } }
+    @media(max-width: 650px) { .grid-4 { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div>
+      <div class="title">🧪 NIFTY 15-Min ORB <span>Backtest Engine</span></div>
+      <div class="subtitle">10-Year (2015–2026) Quantitative Simulation · Greeks · Delta Hedge · Real Taxes & Slippage</div>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-primary" onclick="runBacktest()" id="btn-run">🚀 Run Simulation</button>
+      <button class="btn btn-muted" onclick="exportCSV()" id="btn-export" style="display:none">📥 Export CSV</button>
+    </div>
+  </div>
+
+  <!-- Config Grid (4 Cards) -->
+  <div class="grid-4">
+    <!-- Card 1: Capital & Sizing -->
+    <div class="card">
+      <div class="card-title">💰 Capital & Sizing</div>
+      <div class="form-group">
+        <label class="form-label">Initial Capital (₹)</label>
+        <input type="number" id="cfg-capital" class="form-input" value="500000" step="50000">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Sizing Mode</label>
+          <select id="cfg-sizing-mode" class="form-select" onchange="toggleSizing()">
+            <option value="compounding" selected>Compounding</option>
+            <option value="fixed_lots">Fixed Lots</option>
+          </select>
+        </div>
+        <div class="form-group" id="grp-fixed-lots" style="display:none">
+          <label class="form-label">Fixed Lots</label>
+          <input type="number" id="cfg-fixed-lots" class="form-input" value="1" min="1">
+        </div>
+        <div class="form-group" id="grp-max-lots">
+          <label class="form-label">Max Lots Cap</label>
+          <input type="number" id="cfg-max-lots" class="form-input" value="10" min="1">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Margin / Lot (₹)</label>
+          <input type="number" id="cfg-margin-lot" class="form-input" value="60000" step="5000">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Risk % / Trade</label>
+          <input type="number" id="cfg-risk-trade" class="form-input" value="5">
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 2: Timing & Range -->
+    <div class="card">
+      <div class="card-title">⏱️ Timing & Range</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">ORB Start</label>
+          <input type="text" id="cfg-orb-start" class="form-input" value="09:15">
+        </div>
+        <div class="form-group">
+          <label class="form-label">ORB End</label>
+          <input type="text" id="cfg-orb-end" class="form-input" value="10:15">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Timeframe</label>
+          <select id="cfg-timeframe" class="form-select">
+            <option value="15" selected>15 Minutes</option>
+            <option value="5">5 Minutes</option>
+            <option value="30">30 Minutes</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Window End</label>
+          <input type="text" id="cfg-window-end" class="form-input" value="15:20">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Min Range (pts)</label>
+          <input type="number" id="cfg-min-range" class="form-input" value="40">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Max Range (pts)</label>
+          <input type="number" id="cfg-max-range" class="form-input" value="250">
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 3: Target & Greeks -->
+    <div class="card">
+      <div class="card-title">🎯 Target & Greeks</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Target Multiplier</label>
+          <select id="cfg-target-mult" class="form-select">
+            <option value="1.0">1.0R</option>
+            <option value="1.2">1.2R</option>
+            <option value="1.5" selected>1.5R (Default)</option>
+            <option value="2.0">2.0R</option>
+            <option value="2.5">2.5R</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">SL Mode</label>
+          <select id="cfg-sl-mode" class="form-select">
+            <option value="opposite_boundary" selected>Opposite Boundary</option>
+            <option value="fixed_r">Fixed 1.0R</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Hedge Mode</label>
+          <select id="cfg-hedge-mode" class="form-select" onchange="toggleHedge()">
+            <option value="delta" selected>Target Delta (0.15)</option>
+            <option value="fixed_pts">Fixed 300 Pts</option>
+          </select>
+        </div>
+        <div class="form-group" id="grp-hedge-delta">
+          <label class="form-label">Hedge |Delta|</label>
+          <input type="number" id="cfg-hedge-delta" class="form-input" value="0.15" step="0.01">
+        </div>
+        <div class="form-group" id="grp-hedge-pts" style="display:none">
+          <label class="form-label">Hedge Pts</label>
+          <input type="number" id="cfg-hedge-pts" class="form-input" value="300" step="50">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Min Net Credit (₹/unit)</label>
+        <input type="number" id="cfg-min-credit" class="form-input" value="5.0" step="0.5">
+      </div>
+    </div>
+
+    <!-- Card 4: Horizon & Friction -->
+    <div class="card">
+      <div class="card-title">⚖️ Period & Friction</div>
+      <div class="form-group">
+        <label class="form-label">Time Horizon Preset</label>
+        <select id="cfg-preset" class="form-select" onchange="applyPreset()">
+          <option value="10y" selected>10 Years (2015 – 2026)</option>
+          <option value="5y">5 Years (2021 – 2026)</option>
+          <option value="3y">3 Years (2023 – 2026)</option>
+          <option value="1y">1 Year (2025 – 2026)</option>
+          <option value="custom">Custom Range</option>
+        </select>
+      </div>
+      <div class="form-row" id="grp-custom-years" style="display:none">
+        <div class="form-group">
+          <label class="form-label">Start Year</label>
+          <input type="number" id="cfg-start-year" class="form-input" value="2015" min="2015" max="2026">
+        </div>
+        <div class="form-group">
+          <label class="form-label">End Year</label>
+          <input type="number" id="cfg-end-year" class="form-input" value="2026" min="2015" max="2026">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Slippage/Leg (₹)</label>
+          <input type="number" id="cfg-slippage" class="form-input" value="0.50" step="0.10">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Brokerage/Order (₹)</label>
+          <input type="number" id="cfg-brokerage" class="form-input" value="20.0">
+        </div>
+      </div>
+      <div class="checkbox-row">
+        <label class="checkbox-label"><input type="checkbox" id="cfg-stt" checked> STT (0.1%)</label>
+        <label class="checkbox-label"><input type="checkbox" id="cfg-exch" checked> Exch (0.05%)</label>
+        <label class="checkbox-label"><input type="checkbox" id="cfg-gst" checked> GST (18%)</label>
+        <label class="checkbox-label"><input type="checkbox" id="cfg-stamp" checked> Stamp</label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading Spinner -->
+  <div id="loading" style="display:none;text-align:center;padding:50px 0;">
+    <div style="font-size:36px;animation:spin 1s linear infinite;display:inline-block">⚙️</div>
+    <div style="font-size:16px;font-weight:700;margin-top:14px;color:#fff">Simulating 10-Year ORB Strategy Engine…</div>
+    <div style="font-size:13px;color:var(--muted);margin-top:4px">Calculating Black-Scholes Greeks, dynamic Theta decay & friction across ~2,500 trading days.</div>
+  </div>
+
+  <!-- Results View -->
+  <div id="results" style="display:none">
+    <!-- 8 KPI Cards -->
+    <div class="grid-4" style="margin-bottom:16px">
+      <div class="stat-card">
+        <div class="stat-label">Total Net P&L</div>
+        <div class="stat-val" id="kpi-pnl">—</div>
+        <div class="stat-sub" id="kpi-roi">ROI: —</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Win Rate / Trades</div>
+        <div class="stat-val text-green" id="kpi-winrate">—</div>
+        <div class="stat-sub" id="kpi-trades-sub">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Profit Factor</div>
+        <div class="stat-val" id="kpi-pf">—</div>
+        <div class="stat-sub" id="kpi-cagr">CAGR: —</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Max Drawdown</div>
+        <div class="stat-val text-red" id="kpi-mdd">—</div>
+        <div class="stat-sub" id="kpi-mdd-inr">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Sharpe Ratio</div>
+        <div class="stat-val text-blue" id="kpi-sharpe">—</div>
+        <div class="stat-sub">Risk-adjusted return</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Sortino Ratio</div>
+        <div class="stat-val text-blue" id="kpi-sortino">—</div>
+        <div class="stat-sub">Downside volatility</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Avg Win / Avg Loss</div>
+        <div class="stat-val" id="kpi-win-loss">—</div>
+        <div class="stat-sub" id="kpi-rr-ratio">RR: —</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Ending Capital</div>
+        <div class="stat-val text-yellow" id="kpi-final-cap">—</div>
+        <div class="stat-sub" id="kpi-init-cap">Initial: —</div>
+      </div>
+    </div>
+
+    <!-- Charts (Equity Curve & Underwater Drawdown) -->
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">📈 Cumulative Equity Curve (INR)</div>
+        <div class="chart-wrap"><canvas id="chart-equity"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">🌊 Underwater Drawdown (%)</div>
+        <div class="chart-wrap"><canvas id="chart-drawdown"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Yearly Breakdown & Monthly Heatmap Matrix -->
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">📅 Year-by-Year Performance Breakdown</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Year</th>
+                <th>Trades</th>
+                <th>Win %</th>
+                <th>Profit Factor</th>
+                <th>Net P&L (₹)</th>
+              </tr>
+            </thead>
+            <tbody id="yearly-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🗓️ Monthly Returns Heatmap Matrix (₹)</div>
+        <div class="table-wrap">
+          <table class="heatmap-table">
+            <thead>
+              <tr>
+                <th>Year</th>
+                <th>Jan</th><th>Feb</th><th>Mar</th><th>Apr</th>
+                <th>May</th><th>Jun</th><th>Jul</th><th>Aug</th>
+                <th>Sep</th><th>Oct</th><th>Nov</th><th>Dec</th>
+              </tr>
+            </thead>
+            <tbody id="heatmap-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Trade Log Table -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+        <div class="card-title" style="margin-bottom:0">📋 Trade-by-Trade Execution Log</div>
+        <input type="text" id="trade-search" class="form-input" placeholder="Search by date, strike, or signal..." style="width:260px;padding:6px 12px;font-size:12px" oninput="filterTrades()">
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Date</th>
+              <th>Signal</th>
+              <th>Strikes</th>
+              <th>Lots</th>
+              <th>Credit</th>
+              <th>Exit Reason</th>
+              <th>Exit Spot</th>
+              <th>Taxes & Friction</th>
+              <th>Net P&L (₹)</th>
+            </tr>
+          </thead>
+          <tbody id="trades-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+let charts = {};
+
+function toggleSizing() {
+  const mode = document.getElementById('cfg-sizing-mode').value;
+  document.getElementById('grp-fixed-lots').style.display = (mode === 'fixed_lots') ? 'block' : 'none';
+  document.getElementById('grp-max-lots').style.display = (mode === 'compounding') ? 'block' : 'none';
+}
+
+function toggleHedge() {
+  const mode = document.getElementById('cfg-hedge-mode').value;
+  document.getElementById('grp-hedge-delta').style.display = (mode === 'delta') ? 'block' : 'none';
+  document.getElementById('grp-hedge-pts').style.display = (mode === 'fixed_pts') ? 'block' : 'none';
+}
+
+function applyPreset() {
+  const preset = document.getElementById('cfg-preset').value;
+  const customGrp = document.getElementById('grp-custom-years');
+  if (preset === 'custom') {
+    customGrp.style.display = 'grid';
+  } else {
+    customGrp.style.display = 'none';
+    const endYr = 2026;
+    let startYr = 2015;
+    if (preset === '1y') startYr = 2025;
+    else if (preset === '3y') startYr = 2023;
+    else if (preset === '5y') startYr = 2021;
+    else if (preset === '10y') startYr = 2015;
+    document.getElementById('cfg-start-year').value = startYr;
+    document.getElementById('cfg-end-year').value = endYr;
+  }
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 4000);
+}
+
+async function runBacktest() {
+  const btn = document.getElementById('btn-run');
+  const loading = document.getElementById('loading');
+  const results = document.getElementById('results');
+  const exportBtn = document.getElementById('btn-export');
+
+  btn.disabled = true;
+  loading.style.display = 'block';
+  results.style.display = 'none';
+  exportBtn.style.display = 'none';
+
+  applyPreset();
+
+  const payload = {
+    capital: {
+      initial_capital: parseFloat(document.getElementById('cfg-capital').value) || 500000,
+      sizing_mode: document.getElementById('cfg-sizing-mode').value,
+      fixed_lots: parseInt(document.getElementById('cfg-fixed-lots').value) || 1,
+      max_lots: parseInt(document.getElementById('cfg-max-lots').value) || 10,
+      margin_per_lot: parseFloat(document.getElementById('cfg-margin-lot').value) || 60000,
+      risk_per_trade_pct: (parseFloat(document.getElementById('cfg-risk-trade').value) || 5) / 100,
+    },
+    timing: {
+      orb_start_time: document.getElementById('cfg-orb-start').value,
+      orb_end_time: document.getElementById('cfg-orb-end').value,
+      candle_timeframe_min: parseInt(document.getElementById('cfg-timeframe').value) || 15,
+      trade_window_end: document.getElementById('cfg-window-end').value,
+    },
+    risk_rules: {
+      target_r_multiple: parseFloat(document.getElementById('cfg-target-mult').value) || 1.5,
+      sl_mode: document.getElementById('cfg-sl-mode').value,
+      min_orb_range_pts: parseFloat(document.getElementById('cfg-min-range').value) || 40,
+      max_orb_range_pts: parseFloat(document.getElementById('cfg-max-range').value) || 250,
+    },
+    options: {
+      target_hedge_abs_delta: parseFloat(document.getElementById('cfg-hedge-delta').value) || 0.15,
+      use_fixed_strike_offset: (document.getElementById('cfg-hedge-mode').value === 'fixed_pts'),
+      fixed_hedge_offset_pts: parseFloat(document.getElementById('cfg-hedge-pts').value) || 300,
+      min_net_credit_inr: parseFloat(document.getElementById('cfg-min-credit').value) || 5.0,
+    },
+    friction: {
+      slippage_per_unit_leg: parseFloat(document.getElementById('cfg-slippage').value) || 0.50,
+      brokerage_per_order: parseFloat(document.getElementById('cfg-brokerage').value) || 20.0,
+      enable_stt: document.getElementById('cfg-stt').checked,
+      enable_exchange_charges: document.getElementById('cfg-exch').checked,
+      enable_gst: document.getElementById('cfg-gst').checked,
+      enable_stamp_duty: document.getElementById('cfg-stamp').checked,
+    },
+    simulation: {
+      start_year: parseInt(document.getElementById('cfg-start-year').value) || 2015,
+      end_year: parseInt(document.getElementById('cfg-end-year').value) || 2026,
+    }
+  };
+
+  try {
+    const res = await fetch('/api/run', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const d = await res.json();
+    if (!d.success) {
+      alert('Backtest error: ' + (d.error || 'Unknown'));
+      return;
+    }
+
+    renderResults(d.data);
+    results.style.display = 'block';
+    exportBtn.style.display = 'inline-flex';
+    showToast('✅ 10-Year Backtest completed successfully!');
+  } catch(e) {
+    alert('Failed to execute backtest: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    loading.style.display = 'none';
+  }
+}
+
+function renderResults(data) {
+  const s = data.summary;
+  const fmtInr = (v) => '₹' + Math.abs(v).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+  const pnlEl = document.getElementById('kpi-pnl');
+  pnlEl.textContent = (s.total_net_pnl >= 0 ? '+' : '-') + fmtInr(s.total_net_pnl);
+  pnlEl.className = 'stat-val ' + (s.total_net_pnl >= 0 ? 'text-green' : 'text-red');
+  document.getElementById('kpi-roi').textContent = `ROI: ${s.total_roi_pct >= 0 ? '+' : ''}${s.total_roi_pct.toFixed(2)}%`;
+
+  document.getElementById('kpi-winrate').textContent = `${s.win_rate_pct.toFixed(1)}%`;
+  document.getElementById('kpi-trades-sub').textContent = `${s.winning_trades}W / ${s.losing_trades}L (${s.total_trades} trades)`;
+
+  document.getElementById('kpi-pf').textContent = s.profit_factor.toFixed(2);
+  document.getElementById('kpi-cagr').textContent = `CAGR: ${s.cagr_pct.toFixed(2)}%`;
+
+  document.getElementById('kpi-mdd').textContent = `${s.max_drawdown_pct.toFixed(2)}%`;
+  document.getElementById('kpi-mdd-inr').textContent = `-${fmtInr(s.max_drawdown_inr)}`;
+
+  document.getElementById('kpi-sharpe').textContent = s.sharpe_ratio.toFixed(2);
+  document.getElementById('kpi-sortino').textContent = s.sortino_ratio.toFixed(2);
+
+  document.getElementById('kpi-win-loss').textContent = `${fmtInr(s.avg_win_inr)} / -${fmtInr(s.avg_loss_inr)}`;
+  document.getElementById('kpi-rr-ratio').textContent = `Win/Loss Ratio: ${s.win_loss_ratio.toFixed(2)}`;
+
+  document.getElementById('kpi-final-cap').textContent = fmtInr(s.final_capital);
+  document.getElementById('kpi-init-cap').textContent = `Initial: ${fmtInr(s.initial_capital)}`;
+
+  renderCharts(data);
+  renderYearly(data.yearly_stats);
+  renderHeatmap(data.monthly_heatmap);
+  renderTrades(data.trades);
+}
+
+function renderCharts(data) {
+  const eqSeries = data.equity_series || [];
+  const ddSeries = data.drawdown_series || [];
+
+  const labels = eqSeries.map(x => x.date);
+  const eqVals = eqSeries.map(x => x.equity);
+  const ddVals = ddSeries.map(x => x.drawdown_pct);
+
+  const ctxEq = document.getElementById('chart-equity').getContext('2d');
+  if (charts.eq) charts.eq.destroy();
+  charts.eq = new Chart(ctxEq, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Account Equity (₹)',
+        data: eqVals,
+        borderColor: '#6366f1',
+        backgroundColor: 'rgba(99,102,241,0.08)',
+        fill: true,
+        tension: 0.1,
+        borderWidth: 2,
+        pointRadius: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { display: false },
+        y: { grid: { color: 'rgba(48,54,61,0.6)' }, ticks: { color: '#8b949e', font: { family: 'var(--mono)', size: 10 } } }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+
+  const ctxDd = document.getElementById('chart-drawdown').getContext('2d');
+  if (charts.dd) charts.dd.destroy();
+  charts.dd = new Chart(ctxDd, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Drawdown (%)',
+        data: ddVals,
+        borderColor: '#ef4444',
+        backgroundColor: 'rgba(239,68,68,0.15)',
+        fill: true,
+        tension: 0.1,
+        borderWidth: 1.5,
+        pointRadius: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { display: false },
+        y: { grid: { color: 'rgba(48,54,61,0.6)' }, ticks: { color: '#8b949e', font: { family: 'var(--mono)', size: 10 }, callback: v => v + '%' } }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+}
+
+function renderYearly(stats) {
+  const tbody = document.getElementById('yearly-tbody');
+  tbody.innerHTML = '';
+  (stats || []).forEach(y => {
+    const isPos = y.net_pnl >= 0;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><b>${y.year}</b></td>
+      <td>${y.trades}</td>
+      <td><span class="pnl-pill ${y.win_rate_pct >= 50 ? 'profit' : 'loss'}">${y.win_rate_pct}%</span></td>
+      <td><b>${y.profit_factor.toFixed(2)}</b></td>
+      <td style="font-family:var(--mono);font-weight:700;color:${isPos ? 'var(--green)' : 'var(--red)'}">
+        ${isPos ? '+' : ''}₹${y.net_pnl.toLocaleString('en-IN', {minimumFractionDigits: 2})}
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderHeatmap(heatmap) {
+  const tbody = document.getElementById('heatmap-tbody');
+  tbody.innerHTML = '';
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  Object.keys(heatmap || {}).sort().forEach(yr => {
+    const row = heatmap[yr];
+    let cells = `<td><b>${yr}</b></td>`;
+    months.forEach(m => {
+      const v = row[m] || 0;
+      let cls = 'zero';
+      let text = '—';
+      if (v > 0) { cls = 'green'; text = '+₹' + Math.round(v/1000) + 'k'; }
+      else if (v < 0) { cls = 'red'; text = '-₹' + Math.round(Math.abs(v)/1000) + 'k'; }
+      cells += `<td class="heatmap-cell ${cls}" title="${yr} ${m}: ₹${v.toLocaleString('en-IN')}">${text}</td>`;
+    });
+    const tr = document.createElement('tr');
+    tr.innerHTML = cells;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderTrades(trades) {
+  const tbody = document.getElementById('trades-tbody');
+  tbody.innerHTML = '';
+  (trades || []).slice(0, 150).forEach(t => {
+    const isProfit = t.net_pnl > 0;
+    const tr = document.createElement('tr');
+    tr.className = 'trade-row';
+    tr.dataset.search = `${t.date} ${t.signal} ${t.sold_strike} ${t.hedge_strike} ${t.exit_reason}`.toLowerCase();
+    tr.innerHTML = `
+      <td style="font-family:var(--mono);color:var(--muted)">#${t.trade_id}</td>
+      <td><b>${t.date}</b> <span style="font-size:11px;color:var(--muted)">${t.entry_time}</span></td>
+      <td><span class="${t.signal==='BULLISH'?'dir-up':'dir-down'}">${t.signal==='BULLISH'?'▲ BULLISH':'▼ BEARISH'}</span></td>
+      <td><span style="font-family:var(--mono);font-size:12px">Sell ${t.sold_strike} ${t.option_type}<br/><span style="color:var(--muted)">Buy ${t.hedge_strike} ${t.option_type}</span></span></td>
+      <td><b>${t.lots}</b> <span style="font-size:11px;color:var(--muted)">(${t.qty}q)</span></td>
+      <td style="font-family:var(--mono)">₹${t.net_credit.toFixed(1)}</td>
+      <td><span class="exit-tag ${t.exit_reason==='TARGET'?'target':(t.exit_reason==='STOP_LOSS'?'sl':'eod')}">${t.exit_reason}</span></td>
+      <td style="font-family:var(--mono)">${t.exit_spot.toFixed(1)}</td>
+      <td style="font-family:var(--mono);font-size:11.5px;color:var(--muted)">₹${(t.total_taxes + t.slippage).toFixed(1)}</td>
+      <td><span class="pnl-pill ${isProfit ? 'profit' : 'loss'}">${isProfit ? '+' : ''}₹${t.net_pnl.toLocaleString('en-IN', {minimumFractionDigits: 2})}</span></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function filterTrades() {
+  const q = document.getElementById('trade-search').value.toLowerCase();
+  document.querySelectorAll('.trade-row').forEach(row => {
+    row.style.display = row.dataset.search.includes(q) ? '' : 'none';
+  });
+}
+
+function exportCSV() {
+  window.location.href = '/api/export';
+}
+</script>
+</body>
+</html>
