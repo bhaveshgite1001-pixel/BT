@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NIFTY 15-Min ORB Credit Spread Backtester (2015–2026)</title>
+  <title>NIFTY 15-Min ORB Quantitative Backtester (2015–2026)</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -93,8 +93,8 @@
   <!-- Header -->
   <div class="header">
     <div>
-      <div class="title">🧪 NIFTY 15-Min ORB <span>Backtest Engine</span></div>
-      <div class="subtitle">10-Year (2015–2026) Quantitative Simulation · Greeks · Delta Hedge · Real Taxes & Slippage</div>
+      <div class="title">🧪 NIFTY 15-Min ORB <span>Backtest Workstation</span></div>
+      <div class="subtitle">10-Year (2015–2026) Quantitative Simulation Engine · Black-Scholes · Real Taxes & Friction</div>
     </div>
     <div style="display:flex;gap:10px">
       <button class="btn btn-primary" onclick="runBacktest()" id="btn-run">🚀 Run Simulation</button>
@@ -104,7 +104,48 @@
 
   <!-- Config Grid (4 Cards) -->
   <div class="grid-4">
-    <!-- Card 1: Capital & Sizing -->
+    <!-- Card 1: Strategy & Mode -->
+    <div class="card">
+      <div class="card-title">🎯 Strategy & Direction</div>
+      <div class="form-group">
+        <label class="form-label">Strategy Mode</label>
+        <select id="cfg-strat-mode" class="form-select" onchange="toggleStratMode()">
+          <option value="option_buying" selected>🚀 Option Buying (Long ATM CE/PE)</option>
+          <option value="credit_spread">🛡️ Credit Spread Selling</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Target Multiplier</label>
+          <select id="cfg-target-mult" class="form-select">
+            <option value="1.5">1.5R</option>
+            <option value="2.0" selected>2.0R (Recommended)</option>
+            <option value="2.5">2.5R (Max PF)</option>
+            <option value="3.0">3.0R</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">SL Multiplier</label>
+          <select id="cfg-sl-mult" class="form-select">
+            <option value="1.0" selected>1.0R (Breakout Level)</option>
+            <option value="0.75">0.75R</option>
+            <option value="0.5">0.5R (Tight)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row" id="grp-hedge-delta" style="display:none">
+        <div class="form-group">
+          <label class="form-label">Hedge Delta</label>
+          <input type="number" id="cfg-hedge-delta" class="form-input" value="0.15" step="0.01">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Min Net Credit (₹)</label>
+          <input type="number" id="cfg-min-credit" class="form-input" value="5.0" step="0.5">
+        </div>
+      </div>
+    </div>
+
+    <!-- Card 2: Capital & Sizing -->
     <div class="card">
       <div class="card-title">💰 Capital & Sizing</div>
       <div class="form-group">
@@ -115,32 +156,26 @@
         <div class="form-group">
           <label class="form-label">Sizing Mode</label>
           <select id="cfg-sizing-mode" class="form-select" onchange="toggleSizing()">
-            <option value="compounding" selected>Compounding</option>
-            <option value="fixed_lots">Fixed Lots</option>
+            <option value="fixed_lots" selected>Fixed Lots (1 Lot)</option>
+            <option value="compounding">Compounding</option>
           </select>
         </div>
-        <div class="form-group" id="grp-fixed-lots" style="display:none">
-          <label class="form-label">Fixed Lots</label>
+        <div class="form-group" id="grp-fixed-lots">
+          <label class="form-label">Lots Count</label>
           <input type="number" id="cfg-fixed-lots" class="form-input" value="1" min="1">
         </div>
-        <div class="form-group" id="grp-max-lots">
+        <div class="form-group" id="grp-max-lots" style="display:none">
           <label class="form-label">Max Lots Cap</label>
           <input type="number" id="cfg-max-lots" class="form-input" value="10" min="1">
         </div>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Margin / Lot (₹)</label>
-          <input type="number" id="cfg-margin-lot" class="form-input" value="60000" step="5000">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Risk % / Trade</label>
-          <input type="number" id="cfg-risk-trade" class="form-input" value="5">
-        </div>
+      <div class="form-group" id="grp-margin-lot" style="display:none">
+        <label class="form-label">Margin / Lot (₹)</label>
+        <input type="number" id="cfg-margin-lot" class="form-input" value="60000" step="5000">
       </div>
     </div>
 
-    <!-- Card 2: Timing & Range -->
+    <!-- Card 3: Timing & Range Filters -->
     <div class="card">
       <div class="card-title">⏱️ Timing & Range</div>
       <div class="form-row">
@@ -155,72 +190,17 @@
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Timeframe</label>
-          <select id="cfg-timeframe" class="form-select">
-            <option value="15" selected>15 Minutes</option>
-            <option value="5">5 Minutes</option>
-            <option value="30">30 Minutes</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Window End</label>
-          <input type="text" id="cfg-window-end" class="form-input" value="15:20">
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
           <label class="form-label">Min Range (pts)</label>
           <input type="number" id="cfg-min-range" class="form-input" value="40">
         </div>
         <div class="form-group">
           <label class="form-label">Max Range (pts)</label>
-          <input type="number" id="cfg-max-range" class="form-input" value="250">
-        </div>
-      </div>
-    </div>
-
-    <!-- Card 3: Target & Greeks -->
-    <div class="card">
-      <div class="card-title">🎯 Target & Greeks</div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Target Multiplier</label>
-          <select id="cfg-target-mult" class="form-select">
-            <option value="1.0">1.0R</option>
-            <option value="1.2">1.2R</option>
-            <option value="1.5" selected>1.5R (Default)</option>
-            <option value="2.0">2.0R</option>
-            <option value="2.5">2.5R</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">SL Mode</label>
-          <select id="cfg-sl-mode" class="form-select">
-            <option value="opposite_boundary" selected>Opposite Boundary</option>
-            <option value="fixed_r">Fixed 1.0R</option>
-          </select>
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Hedge Mode</label>
-          <select id="cfg-hedge-mode" class="form-select" onchange="toggleHedge()">
-            <option value="delta" selected>Target Delta (0.15)</option>
-            <option value="fixed_pts">Fixed 300 Pts</option>
-          </select>
-        </div>
-        <div class="form-group" id="grp-hedge-delta">
-          <label class="form-label">Hedge |Delta|</label>
-          <input type="number" id="cfg-hedge-delta" class="form-input" value="0.15" step="0.01">
-        </div>
-        <div class="form-group" id="grp-hedge-pts" style="display:none">
-          <label class="form-label">Hedge Pts</label>
-          <input type="number" id="cfg-hedge-pts" class="form-input" value="300" step="50">
+          <input type="number" id="cfg-max-range" class="form-input" value="200">
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Min Net Credit (₹/unit)</label>
-        <input type="number" id="cfg-min-credit" class="form-input" value="5.0" step="0.5">
+        <label class="form-label">Trade Window End</label>
+        <input type="text" id="cfg-window-end" class="form-input" value="15:10">
       </div>
     </div>
 
@@ -232,7 +212,7 @@
         <select id="cfg-preset" class="form-select" onchange="applyPreset()">
           <option value="10y" selected>10 Years (2015 – 2026)</option>
           <option value="5y">5 Years (2021 – 2026)</option>
-          <option value="3y">3 Years (2023 – 2026)</option>
+          <option value="2y">2 Years (2024 – 2026)</option>
           <option value="1y">1 Year (2025 – 2026)</option>
           <option value="custom">Custom Range</option>
         </select>
@@ -247,19 +227,9 @@
           <input type="number" id="cfg-end-year" class="form-input" value="2026" min="2015" max="2026">
         </div>
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Slippage/Leg (₹)</label>
-          <input type="number" id="cfg-slippage" class="form-input" value="0.50" step="0.10">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Brokerage/Order (₹)</label>
-          <input type="number" id="cfg-brokerage" class="form-input" value="20.0">
-        </div>
-      </div>
       <div class="checkbox-row">
-        <label class="checkbox-label"><input type="checkbox" id="cfg-stt" checked> STT (0.1%)</label>
-        <label class="checkbox-label"><input type="checkbox" id="cfg-exch" checked> Exch (0.05%)</label>
+        <label class="checkbox-label"><input type="checkbox" id="cfg-stt" checked> STT</label>
+        <label class="checkbox-label"><input type="checkbox" id="cfg-exch" checked> Exch Fee</label>
         <label class="checkbox-label"><input type="checkbox" id="cfg-gst" checked> GST (18%)</label>
         <label class="checkbox-label"><input type="checkbox" id="cfg-stamp" checked> Stamp</label>
       </div>
@@ -269,8 +239,8 @@
   <!-- Loading Spinner -->
   <div id="loading" style="display:none;text-align:center;padding:50px 0;">
     <div style="font-size:36px;animation:spin 1s linear infinite;display:inline-block">⚙️</div>
-    <div style="font-size:16px;font-weight:700;margin-top:14px;color:#fff">Simulating 10-Year ORB Strategy Engine…</div>
-    <div style="font-size:13px;color:var(--muted);margin-top:4px">Calculating Black-Scholes Greeks, dynamic Theta decay & friction across ~2,500 trading days.</div>
+    <div style="font-size:16px;font-weight:700;margin-top:14px;color:#fff">Simulating Quantitative Strategy Engine…</div>
+    <div style="font-size:13px;color:var(--muted);margin-top:4px">Evaluating Black-Scholes Greeks, Target/SL ticks & statutory friction across ~2,500 trading days.</div>
   </div>
 
   <!-- Results View -->
@@ -381,13 +351,14 @@
             <tr>
               <th>#</th>
               <th>Date</th>
+              <th>Strategy</th>
               <th>Signal</th>
-              <th>Strikes</th>
+              <th>Strike</th>
               <th>Lots</th>
-              <th>Credit</th>
+              <th>Entry Px</th>
               <th>Exit Reason</th>
-              <th>Exit Spot</th>
-              <th>Taxes & Friction</th>
+              <th>Exit Px</th>
+              <th>Friction</th>
               <th>Net P&L (₹)</th>
             </tr>
           </thead>
@@ -404,16 +375,16 @@
 <script>
 let charts = {};
 
+function toggleStratMode() {
+  const mode = document.getElementById('cfg-strat-mode').value;
+  document.getElementById('grp-hedge-delta').style.display = (mode === 'credit_spread') ? 'grid' : 'none';
+  document.getElementById('grp-margin-lot').style.display = (mode === 'credit_spread') ? 'block' : 'none';
+}
+
 function toggleSizing() {
   const mode = document.getElementById('cfg-sizing-mode').value;
   document.getElementById('grp-fixed-lots').style.display = (mode === 'fixed_lots') ? 'block' : 'none';
   document.getElementById('grp-max-lots').style.display = (mode === 'compounding') ? 'block' : 'none';
-}
-
-function toggleHedge() {
-  const mode = document.getElementById('cfg-hedge-mode').value;
-  document.getElementById('grp-hedge-delta').style.display = (mode === 'delta') ? 'block' : 'none';
-  document.getElementById('grp-hedge-pts').style.display = (mode === 'fixed_pts') ? 'block' : 'none';
 }
 
 function applyPreset() {
@@ -426,7 +397,7 @@ function applyPreset() {
     const endYr = 2026;
     let startYr = 2015;
     if (preset === '1y') startYr = 2025;
-    else if (preset === '3y') startYr = 2023;
+    else if (preset === '2y') startYr = 2024;
     else if (preset === '5y') startYr = 2021;
     else if (preset === '10y') startYr = 2015;
     document.getElementById('cfg-start-year').value = startYr;
@@ -455,35 +426,34 @@ async function runBacktest() {
   applyPreset();
 
   const payload = {
+    strategy: {
+      mode: document.getElementById('cfg-strat-mode').value,
+      target_r_multiple: parseFloat(document.getElementById('cfg-target-mult').value) || 2.0,
+      sl_r_multiple: parseFloat(document.getElementById('cfg-sl-mult').value) || 1.0,
+    },
     capital: {
       initial_capital: parseFloat(document.getElementById('cfg-capital').value) || 500000,
       sizing_mode: document.getElementById('cfg-sizing-mode').value,
       fixed_lots: parseInt(document.getElementById('cfg-fixed-lots').value) || 1,
       max_lots: parseInt(document.getElementById('cfg-max-lots').value) || 10,
       margin_per_lot: parseFloat(document.getElementById('cfg-margin-lot').value) || 60000,
-      risk_per_trade_pct: (parseFloat(document.getElementById('cfg-risk-trade').value) || 5) / 100,
     },
     timing: {
       orb_start_time: document.getElementById('cfg-orb-start').value,
       orb_end_time: document.getElementById('cfg-orb-end').value,
-      candle_timeframe_min: parseInt(document.getElementById('cfg-timeframe').value) || 15,
       trade_window_end: document.getElementById('cfg-window-end').value,
     },
     risk_rules: {
-      target_r_multiple: parseFloat(document.getElementById('cfg-target-mult').value) || 1.5,
-      sl_mode: document.getElementById('cfg-sl-mode').value,
       min_orb_range_pts: parseFloat(document.getElementById('cfg-min-range').value) || 40,
-      max_orb_range_pts: parseFloat(document.getElementById('cfg-max-range').value) || 250,
+      max_orb_range_pts: parseFloat(document.getElementById('cfg-max-range').value) || 200,
     },
     options: {
       target_hedge_abs_delta: parseFloat(document.getElementById('cfg-hedge-delta').value) || 0.15,
-      use_fixed_strike_offset: (document.getElementById('cfg-hedge-mode').value === 'fixed_pts'),
-      fixed_hedge_offset_pts: parseFloat(document.getElementById('cfg-hedge-pts').value) || 300,
       min_net_credit_inr: parseFloat(document.getElementById('cfg-min-credit').value) || 5.0,
     },
     friction: {
-      slippage_per_unit_leg: parseFloat(document.getElementById('cfg-slippage').value) || 0.50,
-      brokerage_per_order: parseFloat(document.getElementById('cfg-brokerage').value) || 20.0,
+      slippage_per_unit_leg: 0.50,
+      brokerage_per_order: 20.0,
       enable_stt: document.getElementById('cfg-stt').checked,
       enable_exchange_charges: document.getElementById('cfg-exch').checked,
       enable_gst: document.getElementById('cfg-gst').checked,
@@ -510,7 +480,7 @@ async function runBacktest() {
     renderResults(d.data);
     results.style.display = 'block';
     exportBtn.style.display = 'inline-flex';
-    showToast('✅ 10-Year Backtest completed successfully!');
+    showToast('✅ Backtest simulation completed successfully!');
   } catch(e) {
     alert('Failed to execute backtest: ' + e.message);
   } finally {
@@ -521,10 +491,10 @@ async function runBacktest() {
 
 function renderResults(data) {
   const s = data.summary;
-  const fmtInr = (v) => '₹' + Math.abs(v).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  const fmtInr = (v) => (v >= 0 ? '+' : '-') + '₹' + Math.abs(v).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
   const pnlEl = document.getElementById('kpi-pnl');
-  pnlEl.textContent = (s.total_net_pnl >= 0 ? '+' : '-') + fmtInr(s.total_net_pnl);
+  pnlEl.textContent = fmtInr(s.total_net_pnl);
   pnlEl.className = 'stat-val ' + (s.total_net_pnl >= 0 ? 'text-green' : 'text-red');
   document.getElementById('kpi-roi').textContent = `ROI: ${s.total_roi_pct >= 0 ? '+' : ''}${s.total_roi_pct.toFixed(2)}%`;
 
@@ -535,16 +505,16 @@ function renderResults(data) {
   document.getElementById('kpi-cagr').textContent = `CAGR: ${s.cagr_pct.toFixed(2)}%`;
 
   document.getElementById('kpi-mdd').textContent = `${s.max_drawdown_pct.toFixed(2)}%`;
-  document.getElementById('kpi-mdd-inr').textContent = `-${fmtInr(s.max_drawdown_inr)}`;
+  document.getElementById('kpi-mdd-inr').textContent = `-₹${Math.abs(s.max_drawdown_inr).toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
 
   document.getElementById('kpi-sharpe').textContent = s.sharpe_ratio.toFixed(2);
   document.getElementById('kpi-sortino').textContent = s.sortino_ratio.toFixed(2);
 
-  document.getElementById('kpi-win-loss').textContent = `${fmtInr(s.avg_win_inr)} / -${fmtInr(s.avg_loss_inr)}`;
-  document.getElementById('kpi-rr-ratio').textContent = `Win/Loss Ratio: ${s.win_loss_ratio.toFixed(2)}`;
+  document.getElementById('kpi-win-loss').textContent = `₹${s.avg_win_inr.toLocaleString('en-IN', {minimumFractionDigits: 1})} / -₹${s.avg_loss_inr.toLocaleString('en-IN', {minimumFractionDigits: 1})}`;
+  document.getElementById('kpi-rr-ratio').textContent = `Reward/Risk Ratio: ${s.win_loss_ratio.toFixed(2)}`;
 
-  document.getElementById('kpi-final-cap').textContent = fmtInr(s.final_capital);
-  document.getElementById('kpi-init-cap').textContent = `Initial: ${fmtInr(s.initial_capital)}`;
+  document.getElementById('kpi-final-cap').textContent = (s.final_capital >= 0 ? '' : '-') + '₹' + Math.abs(s.final_capital).toLocaleString('en-IN', {minimumFractionDigits: 2});
+  document.getElementById('kpi-init-cap').textContent = `Initial: ₹${s.initial_capital.toLocaleString('en-IN', {minimumFractionDigits: 2})}`;
 
   renderCharts(data);
   renderYearly(data.yearly_stats);
@@ -569,8 +539,8 @@ function renderCharts(data) {
       datasets: [{
         label: 'Account Equity (₹)',
         data: eqVals,
-        borderColor: '#6366f1',
-        backgroundColor: 'rgba(99,102,241,0.08)',
+        borderColor: '#22c55e',
+        backgroundColor: 'rgba(34,197,94,0.08)',
         fill: true,
         tension: 0.1,
         borderWidth: 2,
@@ -626,7 +596,7 @@ function renderYearly(stats) {
     tr.innerHTML = `
       <td><b>${y.year}</b></td>
       <td>${y.trades}</td>
-      <td><span class="pnl-pill ${y.win_rate_pct >= 50 ? 'profit' : 'loss'}">${y.win_rate_pct}%</span></td>
+      <td><span class="pnl-pill ${y.win_rate_pct >= 35 ? 'profit' : 'loss'}">${y.win_rate_pct}%</span></td>
       <td><b>${y.profit_factor.toFixed(2)}</b></td>
       <td style="font-family:var(--mono);font-weight:700;color:${isPos ? 'var(--green)' : 'var(--red)'}">
         ${isPos ? '+' : ''}₹${y.net_pnl.toLocaleString('en-IN', {minimumFractionDigits: 2})}
@@ -661,21 +631,22 @@ function renderHeatmap(heatmap) {
 function renderTrades(trades) {
   const tbody = document.getElementById('trades-tbody');
   tbody.innerHTML = '';
-  (trades || []).slice(0, 150).forEach(t => {
+  (trades || []).slice(-150).reverse().forEach(t => {
     const isProfit = t.net_pnl > 0;
     const tr = document.createElement('tr');
     tr.className = 'trade-row';
-    tr.dataset.search = `${t.date} ${t.signal} ${t.sold_strike} ${t.hedge_strike} ${t.exit_reason}`.toLowerCase();
+    tr.dataset.search = `${t.date} ${t.signal} ${t.strike || t.sold_strike} ${t.exit_reason}`.toLowerCase();
     tr.innerHTML = `
       <td style="font-family:var(--mono);color:var(--muted)">#${t.trade_id}</td>
       <td><b>${t.date}</b> <span style="font-size:11px;color:var(--muted)">${t.entry_time}</span></td>
+      <td><span style="font-size:11px;font-weight:700;color:var(--accent)">${t.strategy || 'OPTION_BUYING'}</span></td>
       <td><span class="${t.signal==='BULLISH'?'dir-up':'dir-down'}">${t.signal==='BULLISH'?'▲ BULLISH':'▼ BEARISH'}</span></td>
-      <td><span style="font-family:var(--mono);font-size:12px">Sell ${t.sold_strike} ${t.option_type}<br/><span style="color:var(--muted)">Buy ${t.hedge_strike} ${t.option_type}</span></span></td>
+      <td><span style="font-family:var(--mono);font-size:12px">${t.strike || t.sold_strike} ${t.option_type}</span></td>
       <td><b>${t.lots}</b> <span style="font-size:11px;color:var(--muted)">(${t.qty}q)</span></td>
-      <td style="font-family:var(--mono)">₹${t.net_credit.toFixed(1)}</td>
+      <td style="font-family:var(--mono)">₹${(t.entry_price || t.net_credit || 0).toFixed(1)}</td>
       <td><span class="exit-tag ${t.exit_reason==='TARGET'?'target':(t.exit_reason==='STOP_LOSS'?'sl':'eod')}">${t.exit_reason}</span></td>
-      <td style="font-family:var(--mono)">${t.exit_spot.toFixed(1)}</td>
-      <td style="font-family:var(--mono);font-size:11.5px;color:var(--muted)">₹${(t.total_taxes + t.slippage).toFixed(1)}</td>
+      <td style="font-family:var(--mono)">₹${(t.exit_price || t.exit_spot || 0).toFixed(1)}</td>
+      <td style="font-family:var(--mono);font-size:11.5px;color:var(--muted)">₹${(t.taxes_friction || 0).toFixed(1)}</td>
       <td><span class="pnl-pill ${isProfit ? 'profit' : 'loss'}">${isProfit ? '+' : ''}₹${t.net_pnl.toLocaleString('en-IN', {minimumFractionDigits: 2})}</span></td>
     `;
     tbody.appendChild(tr);

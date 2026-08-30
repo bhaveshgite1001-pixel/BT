@@ -172,3 +172,37 @@ def compute_performance_metrics(results):
         "monthly_heatmap": monthly_heatmap,
         "drawdown_series": drawdown_series,
     }
+
+
+def print_performance_summary(analytics):
+    """Prints a beautiful quantitative performance report to terminal."""
+    s = analytics["summary"]
+    print("=" * 65)
+    print("       NIFTY 15-MINUTE ORB QUANTITATIVE STRATEGY REPORT       ")
+    print("=" * 65)
+    print(f" Initial Capital      : Rs. {s['initial_capital']:>14,.2f}")
+    print(f" Final Capital        : Rs. {s['final_capital']:>14,.2f}")
+    print(f" Total Net Profit     : Rs. {s['total_net_pnl']:>14,.2f} ({s['total_roi_pct']:+.2f}%)")
+    print(f" CAGR                 : {s['cagr_pct']:>15.2f}%")
+    print("-" * 65)
+    print(f" Total Trades         : {s['total_trades']:>18}")
+    print(f" Win Rate             : {s['win_rate_pct']:>17.1f}% ({s['winning_trades']}W / {s['losing_trades']}L)")
+    print(f" Profit Factor        : {s['profit_factor']:>18.2f}")
+    print(f" Avg Win / Avg Loss   : Rs. {s['avg_win_inr']:>8,.2f} / -Rs. {s['avg_loss_inr']:>8,.2f}")
+    print(f" Payoff (Reward/Risk) : {s['win_loss_ratio']:>18.2f}")
+    print("-" * 65)
+    print(f" Max Drawdown (INR)   : Rs. -{s['max_drawdown_inr']:>13,.2f}")
+    print(f" Max Drawdown (%)     : {s['max_drawdown_pct']:>17.2f}%")
+    print(f" Sharpe Ratio         : {s['sharpe_ratio']:>18.2f}")
+    print(f" Sortino Ratio        : {s['sortino_ratio']:>18.2f}")
+    print(f" Max Consecutive Wins : {s['max_consecutive_wins']:>18}")
+    print(f" Max Consec Losses    : {s['max_consecutive_losses']:>18}")
+    print("=" * 65)
+
+    if analytics.get("yearly_stats"):
+        print("\n📅 YEAR-BY-YEAR PERFORMANCE BREAKDOWN:")
+        print(f" {'Year':<6} | {'Trades':<7} | {'Win %':<7} | {'PF':<6} | {'Net P&L (Rs.)':<16} | {'Targets':<8} | {'SL':<6}")
+        print("-" * 68)
+        for y in analytics["yearly_stats"]:
+            print(f" {y['year']:<6} | {y['trades']:<7} | {y['win_rate_pct']:>5.1f}% | {y['profit_factor']:>6.2f} | Rs. {y['net_pnl']:>12,.2f} | {y['target_hits']:<8} | {y['sl_hits']:<6}")
+        print("-" * 68)

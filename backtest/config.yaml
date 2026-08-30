@@ -1,40 +1,43 @@
 # =============================================================================
-# 10-YEAR NIFTY 15-MIN ORB CREDIT SPREAD BACKTEST CONFIGURATION
+# 10-YEAR NIFTY 15-MIN ORB QUANTITATIVE BACKTEST CONFIGURATION
 # =============================================================================
+
+strategy:
+  mode: "option_buying"          # "option_buying" (Recommended +3.5 RR) or "credit_spread"
+  target_r_multiple: 2.0         # Target = 2.0x ORB Range (Options: 1.5, 2.0, 2.5, 3.0)
+  sl_r_multiple: 1.0             # Stop Loss = 1.0x ORB Range (1.0R from entry)
 
 capital:
   initial_capital: 500000.0      # Starting account balance in INR
-  sizing_mode: "compounding"     # "fixed_lots" or "compounding"
+  sizing_mode: "fixed_lots"      # "fixed_lots" or "compounding"
   fixed_lots: 1                  # Used when sizing_mode is "fixed_lots"
   max_lots: 10                   # Maximum lot cap in compounding mode
-  margin_per_lot: 60000.0        # Estimated margin required per credit spread (INR)
+  margin_per_lot: 60000.0        # Estimated margin per spread / capital per lot (INR)
   risk_per_trade_pct: 0.05       # Max capital risked per trade
 
 timing:
   orb_start_time: "09:15"
   orb_end_time: "10:15"          # 1-hour ORB window (four 15-min candles)
   candle_timeframe_min: 15       # 15-minute candle breakout check
-  trade_window_end: "15:20"      # Stop taking new entries after this time
+  trade_window_end: "15:10"      # Stop taking new entries after this time
   eod_squareoff_time: "15:25"    # Force close any open position
 
 risk_rules:
-  target_r_multiple: 1.5         # Target = 1.5x ORB Range extension
-  sl_mode: "opposite_boundary"   # "opposite_boundary" or "fixed_r"
   min_orb_range_pts: 40.0        # Filter: skip trade if ORB range < 40 pts
-  max_orb_range_pts: 250.0       # Filter: skip trade if ORB range > 250 pts
+  max_orb_range_pts: 200.0       # Filter: skip trade if ORB range > 200 pts
   max_trades_per_day: 1          # Max entries allowed per day
 
 options:
-  target_hedge_abs_delta: 0.15   # Theoretical Black-Scholes delta for OTM hedge leg
-  use_fixed_strike_offset: false # If true, uses fixed point offset instead of delta
-  fixed_hedge_offset_pts: 300.0  # Hedge distance if use_fixed_strike_offset is true
-  min_net_credit_inr: 5.0        # Minimum credit threshold (INR/unit) to enter
-  strike_step: 50                # Strike interval for NIFTY
+  target_hedge_abs_delta: 0.15   # Delta for hedge leg if credit_spread mode
+  use_fixed_strike_offset: false # Fixed point offset if true
+  fixed_hedge_offset_pts: 300.0  # Distance for hedge if fixed offset
+  min_net_credit_inr: 5.0        # Min credit threshold if credit_spread mode
+  strike_step: 50                # NIFTY strike interval
 
 friction:
-  slippage_per_unit_leg: 0.50    # INR per unit per leg on entry and exit
+  slippage_per_unit_leg: 0.50    # INR per unit per leg
   brokerage_per_order: 20.0      # Flat brokerage fee per executed order
-  enable_stt: true               # 0.1% STT on option sell turnover
-  enable_exchange_charges: true  # 0.05% exchange turnover charge
-  enable_gst: true               # 18% GST on brokerage + exchange fees
+  enable_stt: true               # 0.1% STT
+  enable_exchange_charges: true  # 0.05% exchange charges
+  enable_gst: true               # 18% GST on brokerage + exchange
   enable_stamp_duty: true        # 0.003% stamp duty on buy orders
