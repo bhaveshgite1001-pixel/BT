@@ -1,0 +1,86 @@
+name: 🚀 Deploy BT to VM
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      restart_dashboard:
+        description: 'Restart the BT dashboard?'
+        required: true
+        default: 'yes'
+        type: choice
+        options:
+          - 'yes'
+          - 'no'
+
+jobs:
+  deploy:
+    name: Deploy BT to VM
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🔑 SSH into VM and deploy BT
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_IP }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            echo "──────────────────────────────────────"
+            echo "🧪 Starting BT Deployment..."
+            echo "──────────────────────────────────────"
+            cd ~/BT
+
+            echo "📥 Pulling latest code from GitHub..."
+            git pull origin main
+
+            echo "📦 Updating dependencies..."
+            if [ -d "venv" ]; then
+              source venv/bin/activate
+            else
+              python3 -m venv venv
+              source venv/bin/activate
+            fi
+            pip install -r requirements.txt --quiet
+
+            echo "✅ BT Code updated successfully!"
+
+            if [ "${{ github.event.inputs.restart_dashboard || 'yes' }}" = "yes" ]; then
+              echo "🔄 Restarting BT dashboard..."
+              
+              # Method A: If systemd service exists, restart via systemctl
+              if systemctl is-active --quiet bt 2>/dev/null; then
+                sudo systemctl restart bt
+                echo "✅ BT Dashboard restarted via systemd service!"
+              else
+                # Method B: Standalone nohup process management
+                cd ~/BT/dashboard
+                if [ -f app.pid ] && kill -0 "$(cat app.pid)" 2>/dev/null; then
+                  echo "Stopping previous BT dashboard (PID $(cat app.pid))..."
+                  kill "$(cat app.pid)" || true
+                  sleep 1
+                fi
+
+                # Kill any lingering process on port 5001 if needed
+                fuser -k 5001/tcp 2>/dev/null || true
+
+                nohup ../venv/bin/python app.py </dev/null > ../dashboard.log 2>&1 &
+                disown
+                echo $! > app.pid
+                sleep 2
+
+                if kill -0 "$(cat app.pid)" 2>/dev/null; then
+                  echo "✅ BT Dashboard is running! (PID $(cat app.pid)) on port 5001"
+                else
+                  echo "⚠️ Checking dashboard log..."
+                  cat ../dashboard.log | tail -n 20
+                fi
+              fi
+            fi
+
+            echo "──────────────────────────────────────"
+            echo "🎉 BT Deployment complete!"
+            echo "──────────────────────────────────────"
