@@ -35,14 +35,14 @@ DEFAULT_CONFIG = {
         "max_trades_per_day": 1,
     },
     "options": {
-        "target_hedge_abs_delta": 0.15,
+        "target_hedge_premium": 5.0,
         "use_fixed_strike_offset": False,
         "fixed_hedge_offset_pts": 300.0,
         "min_net_credit_inr": 5.0,
         "strike_step": 50,
     },
     "friction": {
-        "slippage_per_unit_leg": 0.50,
+        "slippage_per_unit_leg": 5.0,
         "brokerage_per_order": 20.0,
         "enable_stt": True,
         "enable_exchange_charges": True,
@@ -50,9 +50,9 @@ DEFAULT_CONFIG = {
         "enable_stamp_duty": True,
     },
     "simulation": {
-        "years": 10,
+        "years": 9,
         "start_year": 2015,
-        "end_year": 2026,
+        "end_year": 2023,
     }
 }
 

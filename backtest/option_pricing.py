@@ -109,9 +109,9 @@ def find_delta_hedge_strike(spot, option_type, t_years, r, iv, target_delta=0.15
 
     # Scan up to 15 strikes OTM
     if option_type.upper() == "CE":
-        candidates = [atm_strike + i * strike_step for i in range(1, 16)]
+        candidates = [max(strike_step, atm_strike + i * strike_step) for i in range(0, 60)]
     else:
-        candidates = [atm_strike - i * strike_step for i in range(1, 16)]
+        candidates = [max(strike_step, atm_strike - i * strike_step) for i in range(0, 60)]
 
     for strike in candidates:
         d = abs(bs_delta(spot, strike, t_years, r, iv, option_type))
@@ -135,3 +135,26 @@ def get_trading_time_fraction(trade_datetime, expiry_datetime):
     # Annualized time in trading days (250 days/yr)
     t_years = max(1e-6, total_days / 365.0)
     return t_years
+
+def find_premium_hedge_strike(spot, option_type, t_years, r, iv, target_premium=5.0, strike_step=50):
+    """
+    Finds the OTM strike with theoretical premium closest to target_premium.
+    """
+    atm_strike = round(spot / strike_step) * strike_step
+    best_strike = atm_strike
+    best_diff = 999.0
+
+    # Scan up to 40 strikes OTM
+    if option_type.upper() == "CE":
+        candidates = [atm_strike + i * strike_step for i in range(1, 41)]
+    else:
+        candidates = [atm_strike - i * strike_step for i in range(1, 41)]
+
+    for strike in candidates:
+        px = bs_price(spot, strike, t_years, r, iv, option_type)
+        diff = abs(px - target_premium)
+        if diff < best_diff:
+            best_diff = diff
+            best_strike = strike
+
+    return best_strike

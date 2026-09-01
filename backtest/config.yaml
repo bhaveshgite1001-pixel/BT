@@ -28,7 +28,7 @@ risk_rules:
   max_trades_per_day: 1          # Max entries allowed per day
 
 options:
-  target_hedge_abs_delta: 0.15   # Delta for hedge leg if credit_spread mode
+  target_hedge_premium: 5.0   # Delta for hedge leg if credit_spread mode
   use_fixed_strike_offset: false # Fixed point offset if true
   fixed_hedge_offset_pts: 300.0  # Distance for hedge if fixed offset
   min_net_credit_inr: 5.0        # Min credit threshold if credit_spread mode
