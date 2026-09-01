@@ -132,6 +132,10 @@
             <option value="0.5">0.5R (Tight)</option>
           </select>
         </div>
+        <div class="form-group" id="grp-short-sl" style="display:none">
+          <label class="form-label">Short Leg SL (%)</label>
+          <input type="number" id="cfg-short-sl-pct" class="form-input" value="20" min="1" max="100">
+        </div>
       </div>
       <div class="form-row" id="grp-hedge-delta" style="display:none">
         <div class="form-group">
@@ -429,6 +433,7 @@ function toggleStratMode() {
   const mode = document.getElementById('cfg-strat-mode').value;
   document.getElementById('grp-hedge-delta').style.display = (mode === 'credit_spread') ? 'grid' : 'none';
   document.getElementById('grp-margin-lot').style.display = (mode === 'credit_spread') ? 'block' : 'none';
+  document.getElementById('grp-short-sl').style.display = (mode === 'credit_spread') ? 'block' : 'none';
 }
 
 function toggleSizing() {
@@ -480,6 +485,7 @@ async function runBacktest() {
       mode: document.getElementById('cfg-strat-mode').value,
       target_r_multiple: parseFloat(document.getElementById('cfg-target-mult').value) || 2.0,
       sl_r_multiple: parseFloat(document.getElementById('cfg-sl-mult').value) || 1.0,
+      short_stop_loss_pct: (parseFloat(document.getElementById('cfg-short-sl-pct').value) || 20.0) / 100.0,
     },
     capital: {
       initial_capital: parseFloat(document.getElementById('cfg-capital').value) || 500000,
