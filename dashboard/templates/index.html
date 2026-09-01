@@ -111,7 +111,8 @@
         <label class="form-label">Strategy Mode</label>
         <select id="cfg-strat-mode" class="form-select" onchange="toggleStratMode()">
           <option value="option_buying" selected>🚀 Option Buying (Long ATM CE/PE)</option>
-          <option value="credit_spread">🛡️ Credit Spread Selling</option>
+          <option value="premium_breakdown">📉 Premium Breakdown (Directional)</option>
+          <option value="range_bound">🛡️ Range-Bound Selling (Strangle/Condor)</option>
         </select>
       </div>
       <div class="form-row">
@@ -448,10 +449,11 @@ let charts = {};
 
 function toggleStratMode() {
   const mode = document.getElementById('cfg-strat-mode').value;
-  document.getElementById('grp-hedge-delta').style.display = (mode === 'credit_spread') ? 'grid' : 'none';
-  document.getElementById('grp-margin-lot').style.display = (mode === 'credit_spread') ? 'block' : 'none';
-  document.getElementById('grp-short-sl').style.display = (mode === 'credit_spread') ? 'block' : 'none';
-  document.getElementById('grp-short-selection').style.display = (mode === 'credit_spread') ? 'grid' : 'none';
+  const isSelling = mode === 'premium_breakdown' || mode === 'range_bound';
+  document.getElementById('grp-hedge-delta').style.display = isSelling ? 'grid' : 'none';
+  document.getElementById('grp-margin-lot').style.display = isSelling ? 'block' : 'none';
+  document.getElementById('grp-short-sl').style.display = isSelling ? 'block' : 'none';
+  document.getElementById('grp-short-selection').style.display = isSelling ? 'grid' : 'none';
 }
 
 function toggleShortMode() {
