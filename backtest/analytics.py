@@ -145,6 +145,38 @@ def compute_performance_metrics(results):
         for _, row in df_equity.iterrows()
     ]
 
+    # CE / PE Leg Analysis
+    leg_stats = {
+        "CE": {"pnl": 0.0, "wins": 0, "losses": 0, "total": 0, "win_rate": 0.0, "profit_factor": 0.0, "avg_win": 0.0, "avg_loss": 0.0, "max_dd_inr": 0.0},
+        "PE": {"pnl": 0.0, "wins": 0, "losses": 0, "total": 0, "win_rate": 0.0, "profit_factor": 0.0, "avg_win": 0.0, "avg_loss": 0.0, "max_dd_inr": 0.0}
+    }
+    
+    if "option_type" in df_trades.columns:
+        for opt_type in ["CE", "PE"]:
+            leg_df = df_trades[df_trades["option_type"] == opt_type].copy()
+            if len(leg_df) > 0:
+                leg_wins = leg_df[leg_df["net_pnl"] > 0]
+                leg_losses = leg_df[leg_df["net_pnl"] <= 0]
+                
+                leg_stats[opt_type]["pnl"] = round(float(leg_df["net_pnl"].sum()), 2)
+                leg_stats[opt_type]["total"] = len(leg_df)
+                leg_stats[opt_type]["wins"] = len(leg_wins)
+                leg_stats[opt_type]["losses"] = len(leg_losses)
+                leg_stats[opt_type]["win_rate"] = round((len(leg_wins) / len(leg_df)) * 100.0, 1)
+                
+                gross_profit = float(leg_wins["net_pnl"].sum()) if len(leg_wins) > 0 else 0.0
+                gross_loss = abs(float(leg_losses["net_pnl"].sum())) if len(leg_losses) > 0 else 0.0
+                
+                leg_stats[opt_type]["profit_factor"] = round((gross_profit / gross_loss) if gross_loss > 0 else (99.0 if gross_profit > 0 else 0.0), 2)
+                leg_stats[opt_type]["avg_win"] = round((gross_profit / len(leg_wins)) if len(leg_wins) > 0 else 0.0, 2)
+                leg_stats[opt_type]["avg_loss"] = round((gross_loss / len(leg_losses)) if len(leg_losses) > 0 else 0.0, 2)
+                
+                # Leg-specific Drawdown
+                leg_df["cum_pnl"] = leg_df["net_pnl"].cumsum()
+                leg_df["peak"] = leg_df["cum_pnl"].cummax()
+                leg_df["drawdown_inr"] = leg_df["cum_pnl"] - leg_df["peak"]
+                leg_stats[opt_type]["max_dd_inr"] = round(abs(float(leg_df["drawdown_inr"].min())), 2)
+
     return {
         "summary": {
             "initial_capital": round(initial_cap, 2),
@@ -167,6 +199,7 @@ def compute_performance_metrics(results):
             "win_loss_ratio": round(win_loss_ratio, 2),
             "max_consecutive_wins": max_consec_wins,
             "max_consecutive_losses": max_consec_losses,
+            "leg_stats": leg_stats
         },
         "yearly_stats": yearly_stats,
         "monthly_heatmap": monthly_heatmap,
@@ -197,6 +230,15 @@ def print_performance_summary(analytics):
     print(f" Sortino Ratio        : {s['sortino_ratio']:>18.2f}")
     print(f" Max Consecutive Wins : {s['max_consecutive_wins']:>18}")
     print(f" Max Consec Losses    : {s['max_consecutive_losses']:>18}")
+    print("-" * 65)
+    
+    if "leg_stats" in s:
+        ce = s["leg_stats"]["CE"]
+        pe = s["leg_stats"]["PE"]
+        print(" LEG PERFORMANCE:")
+        print(f" CE : {ce['win_rate']:>5.1f}% Win Rate | {ce['total']:>4} Trades | Rs. {ce['pnl']:>12,.2f}")
+        print(f" PE : {pe['win_rate']:>5.1f}% Win Rate | {pe['total']:>4} Trades | Rs. {pe['pnl']:>12,.2f}")
+        
     print("=" * 65)
 
     if analytics.get("yearly_stats"):

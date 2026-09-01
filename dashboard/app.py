@@ -1,119 +1,94 @@
 #!/usr/bin/env python3
 """
-NIFTY ORB Backtesting Terminal
-A Flask-based web dashboard to visualize backtest trades.
+NIFTY 15-Minute ORB Delta-Hedged Credit Spread Backtest Dashboard
+A Flask web application for interactive 10-year quantitative backtesting.
 """
 
 import os
 import sys
 import csv
-from collections import defaultdict
-from flask import Flask, render_template, jsonify, request
-from dotenv import load_dotenv
+import json
+import io
+from flask import Flask, render_template, jsonify, request, Response
 
-load_dotenv()
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(BASE_DIR)
+
+from backtest.config_loader import load_config
+from backtest.engine import run_backtest_simulation
+from backtest.analytics import compute_performance_metrics
 
 app = Flask(__name__)
+LATEST_BACKTEST_RESULT = None
 
-# ── Configuration ──────────────────────────────────────────────────────────────
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STRATEGY_FILES = {
-    "index": {
-        "trade": os.path.join(BASE_DIR, "trade_log.csv"),
-    },
-    "premium": {
-        "trade": os.path.join(BASE_DIR, "premium_trade_log.csv"),
-    }
-}
 
-def get_s_files():
-    strategy = request.args.get("strategy", "premium")
-    return STRATEGY_FILES.get(strategy, STRATEGY_FILES["premium"])
-
-# ── Utilities ──────────────────────────────────────────────────────────────────
-def read_trades():
-    csv_file = get_s_files()["trade"]
-    trades = []
-    if os.path.exists(csv_file):
-        try:
-            with open(csv_file, "r") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    trades.append(row)
-        except Exception:
-            pass
-    return trades
-
-def compute_stats(trades):
-    if not trades:
-        return {}
-    # Track leg specific stats
-    leg_stats = {
-        "CE": {"pnl": 0.0, "wins": 0, "total": 0},
-        "PE": {"pnl": 0.0, "wins": 0, "total": 0}
-    }
-    
-    pnl_values, wins, exit_reasons, directions = [], 0, defaultdict(int), defaultdict(int)
-    for t in trades:
-        try:
-            pnl = float(t.get("net_pnl", 0) or 0)
-            pnl_values.append(pnl)
-            if pnl > 0: wins += 1
-            exit_reasons[t.get("exit_reason", "unknown")] += 1
-            
-            dir_val = t.get("breakout_direction", "unknown")
-            directions[dir_val] += 1
-            
-            if dir_val in leg_stats:
-                leg_stats[dir_val]["pnl"] += pnl
-                leg_stats[dir_val]["total"] += 1
-                if pnl > 0:
-                    leg_stats[dir_val]["wins"] += 1
-        except (ValueError, TypeError):
-            pass
-            
-    total = len(pnl_values)
-    total_pnl = sum(pnl_values)
-    
-    for leg in ["CE", "PE"]:
-        t_leg = leg_stats[leg]["total"]
-        leg_stats[leg]["win_rate"] = round((leg_stats[leg]["wins"] / t_leg) * 100, 1) if t_leg > 0 else 0
-        leg_stats[leg]["pnl"] = round(leg_stats[leg]["pnl"], 2)
-
-    return {
-        "total_trades": total,
-        "total_pnl": round(total_pnl, 2),
-        "win_rate": round((wins / total) * 100, 1) if total > 0 else 0,
-        "wins": wins,
-        "losses": total - wins,
-        "avg_pnl": round(total_pnl / total, 2) if total > 0 else 0,
-        "max_profit": round(max(pnl_values), 2) if pnl_values else 0,
-        "max_loss": round(min(pnl_values), 2) if pnl_values else 0,
-        "exit_reasons": dict(exit_reasons),
-        "directions": dict(directions),
-        "leg_stats": leg_stats
-    }
-
-def build_equity_curve(trades):
-    curve, cumulative = [], 0.0
-    for t in reversed(trades):
-        try:
-            pnl = float(t.get("net_pnl", 0) or 0)
-            cumulative += pnl
-            curve.append({"date": t.get("date", ""), "daily_pnl": round(pnl, 2), "cumulative": round(cumulative, 2)})
-        except (ValueError, TypeError):
-            pass
-    return curve
-
-# ── Routes ─────────────────────────────────────────────────────────────────────
 @app.route("/")
 def index():
     return render_template("index.html")
 
-@app.route("/api/trades")
-def api_trades():
-    trades = read_trades()
-    return jsonify({"trades": trades, "stats": compute_stats(trades), "equity_curve": build_equity_curve(trades)})
+
+@app.route("/api/config", methods=["GET"])
+def api_get_config():
+    """Returns the default configuration."""
+    try:
+        cfg = load_config()
+        return jsonify({"success": True, "config": cfg})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/run", methods=["POST"])
+def api_run_backtest():
+    """Runs the backtest simulation with user-provided parameters."""
+    global LATEST_BACKTEST_RESULT
+    try:
+        user_overrides = request.get_json() or {}
+        config = load_config(custom_overrides=user_overrides)
+
+        raw_results = run_backtest_simulation(config)
+        analytics = compute_performance_metrics(raw_results)
+
+        LATEST_BACKTEST_RESULT = {
+            "summary": analytics["summary"],
+            "yearly_stats": analytics["yearly_stats"],
+            "monthly_heatmap": analytics["monthly_heatmap"],
+            "equity_series": raw_results["equity_series"],
+            "drawdown_series": analytics["drawdown_series"],
+            "trades": raw_results["trades"],
+            "config": config,
+        }
+
+        return jsonify({
+            "success": True,
+            "data": LATEST_BACKTEST_RESULT
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/export", methods=["GET"])
+def api_export_csv():
+    """Exports latest trade log to CSV."""
+    global LATEST_BACKTEST_RESULT
+    if not LATEST_BACKTEST_RESULT or not LATEST_BACKTEST_RESULT.get("trades"):
+        return Response("No backtest results available to export.", status=404)
+
+    trades = LATEST_BACKTEST_RESULT["trades"]
+    keys = trades[0].keys()
+
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=keys)
+    writer.writeheader()
+    writer.writerows(trades)
+
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-disposition": "attachment; filename=nifty_orb_backtest_trades.csv"}
+    )
+
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    app.run(host="0.0.0.0", port=5001, debug=False)
