@@ -6,7 +6,7 @@ Corrected version: independent strategy execution, correct stop-loss, accurate O
 
 import os
 import math
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 import pandas as pd
 import numpy as np
 
