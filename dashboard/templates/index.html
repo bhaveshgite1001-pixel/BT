@@ -137,6 +137,23 @@
           <input type="number" id="cfg-short-sl-pct" class="form-input" value="20" min="1" max="100">
         </div>
       </div>
+      <div class="form-row" id="grp-short-selection" style="display:none">
+        <div class="form-group">
+          <label class="form-label">Short Leg Mode</label>
+          <select id="cfg-short-mode" class="form-select" onchange="toggleShortMode()">
+            <option value="premium" selected>By Premium (₹)</option>
+            <option value="delta">By Delta</option>
+          </select>
+        </div>
+        <div class="form-group" id="grp-short-premium">
+          <label class="form-label">Target Premium</label>
+          <input type="number" id="cfg-short-premium" class="form-input" value="200" step="10">
+        </div>
+        <div class="form-group" id="grp-short-delta" style="display:none">
+          <label class="form-label">Target Delta</label>
+          <input type="number" id="cfg-short-delta" class="form-input" value="0.5" step="0.01">
+        </div>
+      </div>
       <div class="form-row" id="grp-hedge-delta" style="display:none">
         <div class="form-group">
           <label class="form-label">Hedge Delta</label>
@@ -434,6 +451,13 @@ function toggleStratMode() {
   document.getElementById('grp-hedge-delta').style.display = (mode === 'credit_spread') ? 'grid' : 'none';
   document.getElementById('grp-margin-lot').style.display = (mode === 'credit_spread') ? 'block' : 'none';
   document.getElementById('grp-short-sl').style.display = (mode === 'credit_spread') ? 'block' : 'none';
+  document.getElementById('grp-short-selection').style.display = (mode === 'credit_spread') ? 'grid' : 'none';
+}
+
+function toggleShortMode() {
+  const mode = document.getElementById('cfg-short-mode').value;
+  document.getElementById('grp-short-premium').style.display = (mode === 'premium') ? 'block' : 'none';
+  document.getElementById('grp-short-delta').style.display = (mode === 'delta') ? 'block' : 'none';
 }
 
 function toggleSizing() {
@@ -504,7 +528,10 @@ async function runBacktest() {
       max_orb_range_pts: parseFloat(document.getElementById('cfg-max-range').value) || 200,
     },
     options: {
-      target_hedge_abs_delta: parseFloat(document.getElementById('cfg-hedge-delta').value) || 0.15,
+      short_selection_mode: document.getElementById('cfg-short-mode').value,
+      short_target_premium: parseFloat(document.getElementById('cfg-short-premium').value) || 200.0,
+      short_target_delta: parseFloat(document.getElementById('cfg-short-delta').value) || 0.50,
+      target_hedge_delta: parseFloat(document.getElementById('cfg-hedge-delta').value) || 0.15,
       min_net_credit_inr: parseFloat(document.getElementById('cfg-min-credit').value) || 5.0,
     },
     friction: {
