@@ -52,7 +52,7 @@ def run_backtest_simulation(config):
     sizing_mode = cap_cfg.get("sizing_mode", "fixed_lots")
     fixed_lots = int(cap_cfg.get("fixed_lots", 1))
     max_lots = int(cap_cfg.get("max_lots", 10))
-    margin_per_lot = float(cap_cfg.get("margin_per_lot", 60000.0))  # For spreads, this should be adjusted elsewhere
+    margin_per_lot = float(cap_cfg.get("margin_per_lot", 60000.0))  # For spreads, adjust accordingly
 
     risk_cfg = config.get("risk_rules", {})
     min_orb_range = float(risk_cfg.get("min_orb_range_pts", 40.0))
@@ -70,6 +70,12 @@ def run_backtest_simulation(config):
     sim_cfg = config.get("simulation", {})
     start_year = int(sim_cfg.get("start_year", 2008))
     end_year = int(sim_cfg.get("end_year", 2026))
+
+    timing_cfg = config.get("timing", {})
+    orb_start_time = datetime.strptime(timing_cfg.get("orb_start_time", "09:15"), "%H:%M").time()
+    orb_end_time = datetime.strptime(timing_cfg.get("orb_end_time", "10:15"), "%H:%M").time()
+    trade_window_end_time = datetime.strptime(timing_cfg.get("trade_window_end", "15:20"), "%H:%M").time()
+    eod_squareoff_time = datetime.strptime(timing_cfg.get("eod_squareoff_time", "15:25"), "%H:%M").time()
 
     # 2. Data Ingestion
     df_1min = load_nifty_1min_data(start_year=start_year, end_year=end_year)
@@ -234,17 +240,17 @@ def run_backtest_simulation(config):
         # Runs independently every day from 09:16 to 15:25
         # =====================================================================
         else:  # premium_breakdown
-            # 1. At 09:16 AM, select short strikes closest to ₹200 premium
-            # Get the 09:16 bar (or first available after 09:15)
-            bars_915_916 = day_1m[(day_1m["timestamp"].dt.time >= time(9, 15)) & (day_1m["timestamp"].dt.time <= time(9, 16))]
-            if len(bars_915_916) == 0:
+            # 1. At ORB Start, select short strikes closest to ₹200 premium
+            strike_time_end = (datetime.combine(trade_date, orb_start_time) + timedelta(minutes=1)).time()
+            bars_start = day_1m[(day_1m["timestamp"].dt.time >= orb_start_time) & (day_1m["timestamp"].dt.time <= strike_time_end)]
+            if len(bars_start) == 0:
                 continue
-            start_bar = bars_915_916.iloc[0]
+            start_bar = bars_start.iloc[0]
             spot_915 = float(start_bar["open"])
             vix_915 = min(1.0, max(0.08, float(start_bar["vix"]) / 100.0))
             expiry_dt = datetime.combine(trade_date, time(15, 30))
             t_915 = get_trading_time_fraction(start_bar["timestamp"], expiry_dt)
-            sigma_915 = get_intraday_iv(vix_915, time(9, 15))
+            sigma_915 = get_intraday_iv(vix_915, orb_start_time)
 
             def get_200_strike(spot, opt_type):
                 best_strike = None
@@ -263,10 +269,10 @@ def run_backtest_simulation(config):
             if not ce_strike or not pe_strike:
                 continue
 
-            # 2. Compute premium ORB range using 09:16 to 10:15 data (exactly)
-            orb_period_mask = (day_1m["timestamp"].dt.time >= time(9, 16)) & (day_1m["timestamp"].dt.time <= time(10, 15))
+            # 2. Compute premium ORB range dynamically
+            orb_period_mask = (day_1m["timestamp"].dt.time > orb_start_time) & (day_1m["timestamp"].dt.time <= orb_end_time)
             orb_1m = day_1m[orb_period_mask]
-            if len(orb_1m) < 10:  # Need enough data
+            if len(orb_1m) < 10:
                 continue
 
             ce_orb_high = 0.0
@@ -282,32 +288,43 @@ def run_backtest_simulation(config):
                 m_vix = min(1.0, max(0.08, float(m_bar["vix"]) / 100.0))
                 m_sigma = get_intraday_iv(m_vix, m_ts.time())
 
-                # CE premium: high when spot high, low when spot low
                 ce_px_h = bs_price(m_spot_h, ce_strike, m_t, r_rate, m_sigma, "CE")
                 ce_px_l = bs_price(m_spot_l, ce_strike, m_t, r_rate, m_sigma, "CE")
                 ce_orb_high = max(ce_orb_high, ce_px_h)
                 ce_orb_low = min(ce_orb_low, ce_px_l)
 
-                # PE premium: high when spot low, low when spot high
                 pe_px_h = bs_price(m_spot_l, pe_strike, m_t, r_rate, m_sigma, "PE")
                 pe_px_l = bs_price(m_spot_h, pe_strike, m_t, r_rate, m_sigma, "PE")
                 pe_orb_high = max(pe_orb_high, pe_px_h)
                 pe_orb_low = min(pe_orb_low, pe_px_l)
 
-            # 3. Monitor from 10:15 to 15:25 for premium breakdowns
-            monitor_1m = day_1m[day_1m["timestamp"].dt.time >= time(10, 15)]
+            # 3. Lot sizing for premium breakdown (must be defined before monitoring loop)
+            contract_lot_size = get_historical_lot_size(trade_date)
+            if sizing_mode == "fixed_lots":
+                lots = fixed_lots
+            else:
+                # Use margin_per_lot (note: for spreads, adjust margin accordingly)
+                lots = min(max_lots, int(current_capital // margin_per_lot))
+            if lots * margin_per_lot > current_capital:
+                lots = int(current_capital // margin_per_lot)
+            if lots < 1:
+                continue
+            total_qty = lots * contract_lot_size
+
+            # 4. Monitor from ORB End to EOD for premium breakdowns
+            monitor_1m = day_1m[day_1m["timestamp"].dt.time >= orb_end_time]
             if len(monitor_1m) == 0:
                 continue
 
             traded_legs = []
-            positions = []  # list of active positions (short+hedge pair)
+            positions = []
             last_3m_ce_close = 0.0
             last_3m_pe_close = 0.0
 
             for _, m_bar in monitor_1m.iterrows():
                 m_ts = m_bar["timestamp"]
                 t = m_ts.time()
-                if t > time(15, 25):
+                if t > eod_squareoff_time:
                     break
 
                 m_spot_h = float(m_bar["high"])
@@ -317,31 +334,25 @@ def run_backtest_simulation(config):
                 m_vix = min(1.0, max(0.08, float(m_bar["vix"]) / 100.0))
                 m_sigma = get_intraday_iv(m_vix, t)
 
-                # Option prices at close for current minute
                 ce_s_px = bs_price(m_spot_c, ce_strike, m_t, r_rate, m_sigma, "CE")
                 pe_s_px = bs_price(m_spot_c, pe_strike, m_t, r_rate, m_sigma, "PE")
 
-                # Check for 3-minute boundary using exact time
                 if t.minute % 3 == 0:
                     last_3m_ce_close = ce_s_px
                     last_3m_pe_close = pe_s_px
 
-                    # Entry only before trade window ends (15:20)
-                    if t <= time(15, 20):
-                        # CE breakdown
+                    if t <= trade_window_end_time:
                         if "CE" not in traded_legs and last_3m_ce_close > 0 and last_3m_ce_close < ce_orb_low:
-                            # Determine hedge strike
                             if use_fixed_offset:
                                 ce_h_strike = ce_strike + fixed_offset
                             else:
                                 ce_h_strike = find_delta_hedge_strike(m_spot_c, "CE", m_t, r_rate, m_sigma, target_hedge_delta, strike_step)
                             ce_h_px = bs_price(m_spot_c, ce_h_strike, m_t, r_rate, m_sigma, "CE")
-                            # Ensure net credit positive (optional filter)
                             if (ce_s_px - ce_h_px) >= min_net_credit:
                                 positions.append({
                                     "type": "CE_SHORT",
                                     "entry": ce_s_px,
-                                    "sl": ce_s_px * (1 + short_stop_loss_pct),  # 20% above entry
+                                    "sl": ce_s_px * (1 + short_stop_loss_pct),
                                     "strike": ce_strike,
                                     "hedge_strike": ce_h_strike,
                                     "hedge_entry": ce_h_px,
@@ -350,7 +361,6 @@ def run_backtest_simulation(config):
                                 })
                                 traded_legs.append("CE")
 
-                        # PE breakdown
                         if "PE" not in traded_legs and last_3m_pe_close > 0 and last_3m_pe_close < pe_orb_low:
                             if use_fixed_offset:
                                 pe_h_strike = pe_strike - fixed_offset
@@ -370,29 +380,23 @@ def run_backtest_simulation(config):
                                 })
                                 traded_legs.append("PE")
 
-                # Check SL or EOD for active positions
                 active_positions = []
                 for pos in positions:
                     opt_type = "CE" if "CE" in pos["type"] else "PE"
-                    # Current short option price (use close for simplicity)
                     short_px = ce_s_px if opt_type == "CE" else pe_s_px
-                    # Check SL
                     exit_px = None
                     exit_reason = None
 
                     if short_px >= pos["sl"]:
                         exit_px = pos["sl"]
                         exit_reason = "STOP_LOSS"
-                    elif t >= time(15, 25):
+                    elif t >= eod_squareoff_time:
                         exit_px = short_px
                         exit_reason = "EOD"
 
                     if exit_px is not None:
-                        # Determine hedge exit price (current)
                         hedge_px = bs_price(m_spot_c, pos["hedge_strike"], m_t, r_rate, m_sigma, opt_type)
-                        # Gross P&L: short profit = entry - exit, hedge loss = hedge_exit - hedge_entry
                         gross_pnl_inr = ((pos["entry"] - exit_px) + (hedge_px - pos["hedge_entry"])) * total_qty
-                        # Friction for two legs (buy/sell short + sell/buy hedge)
                         friction = calculate_trade_friction(pos["entry"], exit_px, pos["hedge_entry"], hedge_px, total_qty, friction_cfg)
                         net_pnl_inr = gross_pnl_inr - friction["total_friction"]
                         current_capital += net_pnl_inr
@@ -431,7 +435,7 @@ def run_backtest_simulation(config):
 
                 positions = active_positions
 
-                if t >= time(15, 25) and not positions:
+                if t >= eod_squareoff_time and not positions:
                     break
 
         # End of day: record equity
