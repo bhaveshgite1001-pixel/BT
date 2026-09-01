@@ -297,131 +297,117 @@ def run_backtest_simulation(config):
                         
                     # 3. Track from 10:15 onwards for Premium Breakdowns
                     subsequent_1m = day_1m[day_1m["timestamp"] > c_ts]
-                    first_breakout = None
-                    ce_entry_px = pe_entry_px = ce_entry_ts = pe_entry_ts = None
+                    traded_legs = []
+                    positions = []
+                    
+                    last_3m_ce_close = 0
+                    last_3m_pe_close = 0
                     
                     for _, m_bar in subsequent_1m.iterrows():
-                        if m_bar["timestamp"].time() > time(15, 10):
-                            break
+                        m_ts = m_bar["timestamp"]
+                        t = m_ts.time()
+                        
                         m_spot_h = float(m_bar["high"])
                         m_spot_l = float(m_bar["low"])
                         m_spot_c = float(m_bar["close"])
-                        m_ts = m_bar["timestamp"]
                         m_t = get_trading_time_fraction(m_ts, expiry_dt)
                         m_vix = min(1.0, max(0.08, float(m_bar["vix"]) / 100.0))
-                        m_sigma = get_intraday_iv(m_vix, m_ts.time())
+                        m_sigma = get_intraday_iv(m_vix, t)
                         
-                        ce_px_l = bs_price(m_spot_l, ce_strike, m_t, r_rate, m_sigma, "CE")
-                        pe_px_l = bs_price(m_spot_h, pe_strike, m_t, r_rate, m_sigma, "PE")
+                        ce_s_px = bs_price(m_spot_c, ce_strike, m_t, r_rate, m_sigma, "CE")
+                        pe_s_px = bs_price(m_spot_c, pe_strike, m_t, r_rate, m_sigma, "PE")
                         
-                        if first_breakout is None:
-                            if ce_px_l < ce_orb_low:
-                                first_breakout = "CE"
-                                ce_entry_px = bs_price(m_spot_c, ce_strike, m_t, r_rate, m_sigma, "CE")
-                                ce_entry_ts = m_ts
-                                break
-                            elif pe_px_l < pe_orb_low:
-                                first_breakout = "PE"
-                                pe_entry_px = bs_price(m_spot_c, pe_strike, m_t, r_rate, m_sigma, "PE")
-                                pe_entry_ts = m_ts
-                                break
-                    
-                    if first_breakout is None:
-                        continue
-                        
-                    # 4. Monitor the triggered position until Stop Loss or EOD
-                    opt_type = first_breakout
-                    sold_strike = ce_strike if opt_type == "CE" else pe_strike
-                    entry_px = ce_entry_px if opt_type == "CE" else pe_entry_px
-                    entry_ts = ce_entry_ts if opt_type == "CE" else pe_entry_ts
-                    sl_premium = ce_orb_high if opt_type == "CE" else pe_orb_high
-                    
-                    entry_row = day_1m[day_1m["timestamp"]==entry_ts].iloc[0]
-                    entry_sigma_final = get_intraday_iv(min(1.0, max(0.08, float(entry_row["vix"]) / 100.0)), entry_ts.time())
-                    t_entry = get_trading_time_fraction(entry_ts, expiry_dt)
-                    entry_spot = float(entry_row["close"])
-                    
-                    if use_fixed_offset:
-                        hedge_strike = sold_strike - fixed_offset if opt_type == "PE" else sold_strike + fixed_offset
-                    else:
-                        hedge_strike = find_delta_hedge_strike(entry_spot, opt_type, t_entry, r_rate, entry_sigma_final, target_hedge_delta, strike_step)
-                        
-                    buy_entry = bs_price(entry_spot, hedge_strike, t_entry, r_rate, entry_sigma_final, opt_type)
-                    
-                    exit_px = None
-                    exit_time = None
-                    exit_reason = "EOD"
-                    
-                    monitor_1m = day_1m[day_1m["timestamp"] > entry_ts]
-                    for _, m_bar in monitor_1m.iterrows():
-                        m_spot_h = float(m_bar["high"])
-                        m_spot_l = float(m_bar["low"])
-                        m_spot_c = float(m_bar["close"])
-                        m_ts = m_bar["timestamp"]
-                        m_t = get_trading_time_fraction(m_ts, expiry_dt)
-                        m_vix = min(1.0, max(0.08, float(m_bar["vix"]) / 100.0))
-                        m_sigma = get_intraday_iv(m_vix, m_ts.time())
-                        
-                        opt_px_h = bs_price(m_spot_h if opt_type=="CE" else m_spot_l, sold_strike, m_t, r_rate, m_sigma, opt_type)
-                        
-                        if opt_px_h >= sl_premium:
-                            exit_px = sl_premium
-                            exit_time = m_ts
-                            exit_reason = "STOP_LOSS"
-                            break
-                            
-                        if m_ts.time() >= time(15, 25):
-                            exit_px = bs_price(m_spot_c, sold_strike, m_t, r_rate, m_sigma, opt_type)
-                            exit_time = m_ts
-                            exit_reason = "EOD"
-                            break
-                            
-                    if exit_px is None:
-                        exit_px = entry_px
-                        exit_time = entry_ts
-                        exit_reason = "EOD"
-                        
-                    exit_row = day_1m[day_1m["timestamp"]==exit_time].iloc[0]
-                    t_exit = get_trading_time_fraction(exit_time, expiry_dt)
-                    exit_sigma = get_intraday_iv(min(1.0, max(0.08, float(exit_row["vix"]) / 100.0)), exit_time.time())
-                    exit_spot = float(exit_row["close"])
-                    buy_exit = bs_price(exit_spot, hedge_strike, t_exit, r_rate, exit_sigma, opt_type)
-                    
-                    gross_pnl_inr = ((entry_px - exit_px) + (buy_exit - buy_entry)) * total_qty
-                    friction = calculate_trade_friction(entry_px, exit_px, buy_entry, buy_exit, total_qty, friction_cfg)
-                    net_pnl_inr = gross_pnl_inr - friction["total_friction"]
-                    current_capital += net_pnl_inr
-                    
-                    trades.append({
-                        "trade_id": len(trades) + 1,
-                        "date": str(trade_date),
-                        "strategy": "PREMIUM_BREAKDOWN",
-                        "signal": opt_type,
-                        "lots": lots,
-                        "qty": total_qty,
-                        "contract_lot_size": contract_lot_size,
-                        "orb_high": round(ce_orb_high if opt_type=="CE" else pe_orb_high, 2),
-                        "orb_low": round(ce_orb_low if opt_type=="CE" else pe_orb_low, 2),
-                        "orb_range": round((ce_orb_high - ce_orb_low) if opt_type=="CE" else (pe_orb_high - pe_orb_low), 2),
-                        "entry_time": str(entry_ts.time())[:8],
-                        "entry_spot": round(entry_spot, 2),
-                        "sold_strike": sold_strike,
-                        "hedge_strike": hedge_strike,
-                        "option_type": opt_type,
-                        "net_credit": round(entry_px - buy_entry, 2),
-                        "exit_time": str(exit_time.time())[:8],
-                        "exit_spot": round(exit_spot, 2),
-                        "exit_reason": exit_reason,
-                        "target_spot": 0.0,
-                        "sl_spot": round(sl_premium, 2),
-                        "gross_pnl": round(gross_pnl_inr, 2),
-                        "taxes_friction": round(friction["total_friction"], 2),
-                        "net_pnl": round(net_pnl_inr, 2),
-                        "capital_after": round(current_capital, 2),
-                    })
+                        if t.minute % 3 == 0:
+                            last_3m_ce_close = ce_s_px
+                            last_3m_pe_close = pe_s_px
 
-                day_traded = True
-                break  # 1 trade per day limit
+                            if t <= time(15, 20):
+                                # Check entries based on last 3-min close
+                                if "CE" not in traded_legs and last_3m_ce_close > 0 and last_3m_ce_close < ce_orb_low:
+                                    traded_legs.append("CE")
+                                    if use_fixed_offset:
+                                        ce_h_strike = ce_strike + fixed_offset
+                                    else:
+                                        ce_h_strike = find_delta_hedge_strike(m_spot_c, "CE", m_t, r_rate, m_sigma, target_hedge_delta, strike_step)
+                                    
+                                    ce_h_px = bs_price(m_spot_c, ce_h_strike, m_t, r_rate, m_sigma, "CE")
+                                    positions.append({
+                                        "type": "CE_SHORT", "entry": ce_s_px, "sl": ce_orb_high, "time": m_ts,
+                                        "strike": ce_strike, "hedge_strike": ce_h_strike, "hedge_entry": ce_h_px, "spot": m_spot_c
+                                    })
+                                    
+                                if "PE" not in traded_legs and last_3m_pe_close > 0 and last_3m_pe_close < pe_orb_low:
+                                    traded_legs.append("PE")
+                                    if use_fixed_offset:
+                                        pe_h_strike = pe_strike - fixed_offset
+                                    else:
+                                        pe_h_strike = find_delta_hedge_strike(m_spot_c, "PE", m_t, r_rate, m_sigma, target_hedge_delta, strike_step)
+                                        
+                                    pe_h_px = bs_price(m_spot_c, pe_h_strike, m_t, r_rate, m_sigma, "PE")
+                                    positions.append({
+                                        "type": "PE_SHORT", "entry": pe_s_px, "sl": pe_orb_high, "time": m_ts,
+                                        "strike": pe_strike, "hedge_strike": pe_h_strike, "hedge_entry": pe_h_px, "spot": m_spot_c
+                                    })
+                                    
+                        # Monitor SL or EOD for active positions
+                        active_positions = []
+                        for pos in positions:
+                            opt_type = "CE" if "CE" in pos["type"] else "PE"
+                            opt_px_h = bs_price(m_spot_h if opt_type=="CE" else m_spot_l, pos["strike"], m_t, r_rate, m_sigma, opt_type)
+                            
+                            exit_px = None
+                            exit_reason = None
+                            
+                            if opt_px_h >= pos["sl"]:
+                                exit_px = pos["sl"]
+                                exit_reason = "STOP_LOSS"
+                            elif t >= time(15, 25):
+                                exit_px = bs_price(m_spot_c, pos["strike"], m_t, r_rate, m_sigma, opt_type)
+                                exit_reason = "EOD"
+                                
+                            if exit_px is not None:
+                                buy_exit = bs_price(m_spot_c, pos["hedge_strike"], m_t, r_rate, m_sigma, opt_type)
+                                
+                                gross_pnl_inr = ((pos["entry"] - exit_px) + (buy_exit - pos["hedge_entry"])) * total_qty
+                                friction = calculate_trade_friction(pos["entry"], exit_px, pos["hedge_entry"], buy_exit, total_qty, friction_cfg)
+                                net_pnl_inr = gross_pnl_inr - friction["total_friction"]
+                                current_capital += net_pnl_inr
+                                
+                                trades.append({
+                                    "trade_id": len(trades) + 1,
+                                    "date": str(trade_date),
+                                    "strategy": "PREMIUM_BREAKDOWN",
+                                    "signal": opt_type,
+                                    "lots": lots,
+                                    "qty": total_qty,
+                                    "contract_lot_size": contract_lot_size,
+                                    "orb_high": round(ce_orb_high if opt_type=="CE" else pe_orb_high, 2),
+                                    "orb_low": round(ce_orb_low if opt_type=="CE" else pe_orb_low, 2),
+                                    "orb_range": round((ce_orb_high - ce_orb_low) if opt_type=="CE" else (pe_orb_high - pe_orb_low), 2),
+                                    "entry_time": str(pos["time"].time())[:8],
+                                    "entry_spot": round(pos["spot"], 2),
+                                    "sold_strike": pos["strike"],
+                                    "hedge_strike": pos["hedge_strike"],
+                                    "option_type": opt_type,
+                                    "net_credit": round(pos["entry"] - pos["hedge_entry"], 2),
+                                    "exit_time": str(m_ts.time())[:8],
+                                    "exit_spot": round(m_spot_c, 2),
+                                    "exit_reason": exit_reason,
+                                    "target_spot": 0.0,
+                                    "sl_spot": round(pos["sl"], 2),
+                                    "gross_pnl": round(gross_pnl_inr, 2),
+                                    "taxes_friction": round(friction["total_friction"], 2),
+                                    "net_pnl": round(net_pnl_inr, 2),
+                                    "capital_after": round(current_capital, 2),
+                                })
+                                day_traded = True
+                            else:
+                                active_positions.append(pos)
+                        
+                        positions = active_positions
+                        
+                        if t >= time(15, 25) and not positions:
+                            break
 
         daily_equity_series.append({
             "date": str(trade_date),
