@@ -64,8 +64,8 @@ jobs:
                   sleep 1
                 fi
 
-                # Kill any lingering process on port 5001 if needed
-                fuser -k 5001/tcp 2>/dev/null || true
+                # Kill any lingering process on port 5000 if needed
+                fuser -k 5000/tcp 2>/dev/null || true
 
                 nohup ../venv/bin/python app.py </dev/null > ../dashboard.log 2>&1 &
                 disown
@@ -73,7 +73,7 @@ jobs:
                 sleep 2
 
                 if kill -0 "$(cat app.pid)" 2>/dev/null; then
-                  echo "✅ BT Dashboard is running! (PID $(cat app.pid)) on port 5001"
+                  echo "✅ BT Dashboard is running! (PID $(cat app.pid)) on port 5000"
                 else
                   echo "⚠️ Checking dashboard log..."
                   cat ../dashboard.log | tail -n 20
