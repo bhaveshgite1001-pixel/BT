@@ -104,6 +104,12 @@ def run_backtest_simulation(config):
     sim_cfg = config.get("simulation", {})
     start_year = int(sim_cfg.get("start_year", 2008))
     end_year = int(sim_cfg.get("end_year", 2026))
+    
+    timing_cfg = config.get("timing", {})
+    orb_start_time = datetime.strptime(timing_cfg.get("orb_start_time", "09:15"), "%H:%M").time()
+    orb_end_time = datetime.strptime(timing_cfg.get("orb_end_time", "10:15"), "%H:%M").time()
+    trade_window_end_time = datetime.strptime(timing_cfg.get("trade_window_end", "15:20"), "%H:%M").time()
+    eod_squareoff_time = datetime.strptime(timing_cfg.get("eod_squareoff_time", "15:25"), "%H:%M").time()
 
     # 2. Data Ingestion
     df_1min = load_nifty_1min_data(start_year=start_year, end_year=end_year)
